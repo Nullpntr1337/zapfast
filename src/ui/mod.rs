@@ -39,6 +39,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
     keys::handle(app, ctx);
+    history_buttons(app, ctx);
     let main_navigation = app.is_linked()
         && app.page == Page::Chats
         && app.dialog.is_none()
@@ -117,6 +118,51 @@ fn central_frame(app: &App) -> Frame {
     };
 
     Frame::new().fill(central_background(app)).stroke(stroke)
+}
+
+/// Steps through the window's history with the mouse's side buttons, as a
+/// browser does: `Extra1` (Back) goes back, `Extra2` (Forward) forward.
+/// Ignored while a transient overlay owns the screen, where the keyboard is
+/// too: the image preview, an expanded video, a picker, a recording, or a
+/// message selection.
+fn history_buttons(app: &mut App, ctx: &egui::Context) {
+    if app.image_preview.is_some()
+        || app.video_expanded
+        || app.picker.is_some()
+        || app.reaction_target.is_some()
+        || app.recording.is_some()
+        || app.selection.is_some()
+    {
+        return;
+    }
+    let (mut back, mut forward) = (false, false);
+    ctx.input_mut(|input| {
+        input.events.retain(|event| match event {
+            egui::Event::PointerButton {
+                button: egui::PointerButton::Extra1,
+                pressed,
+                ..
+            } => {
+                back |= *pressed;
+                false
+            }
+            egui::Event::PointerButton {
+                button: egui::PointerButton::Extra2,
+                pressed,
+                ..
+            } => {
+                forward |= *pressed;
+                false
+            }
+            _ => true,
+        });
+    });
+    if back {
+        app.actions.push(Action::NavigateBack);
+    }
+    if forward {
+        app.actions.push(Action::NavigateForward);
+    }
 }
 
 /// Where the focus ring was drawn this frame, used by interaction tests.
@@ -540,6 +586,44 @@ mod idle_tests {
                 egui::Color32::from_rgba_unmultiplied(233, 237, 239, 32)
             )
         );
+    }
+
+    #[test]
+    fn the_mouse_side_buttons_ask_for_history_steps() {
+        let root = tempfile::tempdir().unwrap();
+        let mut app = App::headless(
+            crate::paths::AppDirs::under(root.path()),
+            crate::settings::Settings::default(),
+        )
+        .0;
+        let ctx = egui::Context::default();
+        let press = |app: &mut App, button: egui::PointerButton| {
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events: vec![egui::Event::PointerButton {
+                        pos: egui::pos2(20.0, 20.0),
+                        button,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    }],
+                    ..Default::default()
+                },
+                |ui| history_buttons(app, ui.ctx()),
+            );
+            output.textures_delta.clear();
+            std::mem::take(&mut app.actions)
+        };
+        assert!(
+            press(&mut app, egui::PointerButton::Extra1).contains(&Action::NavigateBack),
+            "the back side button steps back"
+        );
+        assert!(
+            press(&mut app, egui::PointerButton::Extra2).contains(&Action::NavigateForward),
+            "the forward side button steps forward"
+        );
+        // An expanded video owns the screen, as it does for the keyboard.
+        app.video_expanded = true;
+        assert!(press(&mut app, egui::PointerButton::Extra1).is_empty());
     }
 
     #[test]

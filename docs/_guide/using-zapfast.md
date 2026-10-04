@@ -263,6 +263,11 @@ without leaving the composer (Command instead of Ctrl on macOS), and
 chat, `PgUp`/`PgDn` scroll by about a page, and `Home`/`End` jump to the top or
 the newest message (when the input is empty).
 
+With a mouse that has them, the **Back** and **Forward** side buttons step
+through the places you have visited, as in a browser: between chats, and
+between the chat list, Settings, the wallpaper picker, and an open dialog.
+Forward repeats a step until you visit something new.
+
 Sending while reading older messages keeps your place. Use the
 newest-message button or `End` to return to the latest message when you are
 ready. The chat list scrolls to the top after you send, where the chat now is.

@@ -1,0 +1,77 @@
+//! Browser-like history for the mouse's back and forward buttons.
+
+use crate::model::{ChatId, Dialog, Page};
+
+/// A place in the interface the back and forward buttons return to: the page,
+/// the open chat, the locked folder, and the open dialog. Chats are account
+/// scoped, so the history is cleared when the window switches accounts.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Location {
+    /// The page the window shows.
+    pub page: Page,
+    /// The chat open on that page, if any.
+    pub chat: Option<ChatId>,
+    /// Whether the locked chats folder is open.
+    pub locked_folder: bool,
+    /// The dialog over the page, if any.
+    pub dialog: Option<Dialog>,
+}
+
+/// The places visited in this window and where the back and forward buttons
+/// stand among them.
+#[derive(Default)]
+pub struct History {
+    /// Places before the current one, oldest first.
+    past: Vec<Location>,
+    /// Places after the current one, the most recently left first.
+    future: Vec<Location>,
+    /// The place now showing, if one has been recorded.
+    current: Option<Location>,
+}
+
+impl History {
+    /// The most places kept; older ones fall off the back.
+    const LIMIT: usize = 64;
+
+    /// Records `location` as the place now showing. Visiting a new place drops
+    /// the forward history, as a browser does.
+    pub fn visit(&mut self, location: Location) {
+        if self.current.as_ref() == Some(&location) {
+            return;
+        }
+        let Some(previous) = self.current.replace(location) else {
+            return;
+        };
+        self.past.push(previous);
+        if self.past.len() > Self::LIMIT {
+            self.past.remove(0);
+        }
+        self.future.clear();
+    }
+
+    /// Steps back, returning the place to show, or `None` at the oldest.
+    pub fn back(&mut self) -> Option<Location> {
+        let target = self.past.pop()?;
+        if let Some(current) = self.current.replace(target.clone()) {
+            self.future.push(current);
+        }
+        Some(target)
+    }
+
+    /// Steps forward again, returning the place to show, or `None` at the
+    /// newest.
+    pub fn forward(&mut self) -> Option<Location> {
+        let target = self.future.pop()?;
+        if let Some(current) = self.current.replace(target.clone()) {
+            self.past.push(current);
+        }
+        Some(target)
+    }
+
+    /// Forgets every place, for another session or account.
+    pub fn clear(&mut self) {
+        self.past.clear();
+        self.future.clear();
+        self.current = None;
+    }
+}
