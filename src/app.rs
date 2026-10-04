@@ -3529,13 +3529,20 @@ impl App {
         self.backend.send(Command::MarkUnread(chat.to_owned()));
     }
 
-    /// The place the back and forward buttons work with: the page and the chat
-    /// open on it.
-    fn location(&self) -> Location {
-        Location {
+    /// Records where the window now is, for the back and forward buttons. The
+    /// place is built only when it changed, so an idle frame allocates
+    /// nothing.
+    fn record_location(&mut self) {
+        if self
+            .nav_history
+            .is_current(&self.page, self.open_chat.as_deref())
+        {
+            return;
+        }
+        self.nav_history.visit(Location {
             page: self.page.clone(),
             chat: self.open_chat.clone(),
-        }
+        });
     }
 
     /// Steps to the place visited before this one, as the mouse's back button
@@ -4104,13 +4111,13 @@ impl App {
         while !actions.is_empty() {
             for action in actions.drain(..) {
                 self.apply(action, ctx);
-                self.nav_history.visit(self.location());
+                self.record_location();
             }
             actions = std::mem::take(&mut self.actions);
         }
         // A frame with no queued action still fixes the opening place, so the
         // first navigation has somewhere to return to.
-        self.nav_history.visit(self.location());
+        self.record_location();
     }
 
     fn apply(&mut self, action: Action, ctx: &egui::Context) {

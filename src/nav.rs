@@ -30,6 +30,13 @@ impl History {
     /// The most places kept; older ones fall off the back.
     const LIMIT: usize = 64;
 
+    /// Whether the page and chat now showing are already the recorded place.
+    pub fn is_current(&self, page: &Page, chat: Option<&str>) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|current| current.page == *page && current.chat.as_deref() == chat)
+    }
+
     /// Records `location` as the place now showing. Visiting a new place drops
     /// the forward history, as a browser does.
     pub fn visit(&mut self, location: Location) {
