@@ -1,20 +1,17 @@
 //! Browser-like history for the mouse's back and forward buttons.
 
-use crate::model::{ChatId, Dialog, Page};
+use crate::model::{ChatId, Page};
 
-/// A place in the interface the back and forward buttons return to: the page,
-/// the open chat, the locked folder, and the open dialog. Chats are account
-/// scoped, so the history is cleared when the window switches accounts.
+/// A place in the interface the back and forward buttons return to: the page
+/// and the chat open on it. Overlays are not places; Escape closes those, and
+/// the buttons stay inert while one is open. Chats belong to the account that
+/// owns them, so the history is cleared when the window switches accounts.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Location {
     /// The page the window shows.
     pub page: Page,
     /// The chat open on that page, if any.
     pub chat: Option<ChatId>,
-    /// Whether the locked chats folder is open.
-    pub locked_folder: bool,
-    /// The dialog over the page, if any.
-    pub dialog: Option<Dialog>,
 }
 
 /// The places visited in this window and where the back and forward buttons

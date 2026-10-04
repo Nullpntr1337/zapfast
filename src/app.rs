@@ -3529,13 +3529,12 @@ impl App {
         self.backend.send(Command::MarkUnread(chat.to_owned()));
     }
 
-    /// The place the back and forward buttons work with.
+    /// The place the back and forward buttons work with: the page and the chat
+    /// open on it.
     fn location(&self) -> Location {
         Location {
             page: self.page.clone(),
             chat: self.open_chat.clone(),
-            locked_folder: self.locked_folder,
-            dialog: self.dialog.clone(),
         }
     }
 
@@ -3556,13 +3555,8 @@ impl App {
     }
 
     /// Restores a place through the same actions the interface uses, so a
-    /// draft is saved, a locked chat stays shut, and a dialog opens as usual.
+    /// draft is saved and a locked chat stays shut.
     fn show_location(&mut self, location: Location, ctx: &egui::Context) {
-        match (self.locked_folder, location.locked_folder) {
-            (false, true) => self.apply(Action::OpenLockedFolder, ctx),
-            (true, false) => self.apply(Action::CloseLockedFolder, ctx),
-            _ => {}
-        }
         // The chat first: opening one lands on the chat list, and the page
         // below puts the reader back on the page the place recorded.
         if self.open_chat != location.chat {
@@ -3573,13 +3567,6 @@ impl App {
         }
         if self.page != location.page {
             self.apply(Action::Open(location.page), ctx);
-        }
-        // Last: `Action::Open` closes whatever dialog was open.
-        if self.dialog != location.dialog {
-            match location.dialog {
-                Some(dialog) => self.apply(Action::ShowDialog(dialog), ctx),
-                None => self.apply(Action::CloseDialog, ctx),
-            }
         }
     }
 
@@ -6754,7 +6741,7 @@ fn notification_eligible(chat: &Chat, now: i64, message_at: i64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ChatKind, Content, Media, MediaState, ToastKind};
+    use crate::model::{ChatKind, Content, Dialog, Media, MediaState, ToastKind};
 
     fn app() -> App {
         let root = std::env::temp_dir().join(format!("zapfast-app-{}", std::process::id()));
@@ -6791,6 +6778,28 @@ mod tests {
         app.apply(Action::NavigateForward, &ctx);
         assert_eq!(app.page, Page::Settings);
         assert_eq!(app.open_chat.as_deref(), Some(chat));
+    }
+
+    #[test]
+    fn a_dialog_is_not_a_place_in_the_history() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let chat = "15550007777@s.whatsapp.net";
+        app.chats.push(Chat::new(chat.into(), "Ada".into()));
+        app.apply_actions(&ctx);
+
+        app.actions.push(Action::OpenChat(chat.into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::ShowDialog(Dialog::NewChat));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::CloseDialog);
+        app.apply_actions(&ctx);
+
+        // The dialog never became a place, so one back step reaches the list.
+        app.apply(Action::NavigateBack, &ctx);
+        assert_eq!(app.open_chat, None);
+        assert_eq!(app.page, Page::Chats);
+        assert_eq!(app.dialog, None, "the dialog is not restored");
     }
 
     #[test]

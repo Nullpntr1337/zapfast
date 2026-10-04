@@ -122,16 +122,20 @@ fn central_frame(app: &App) -> Frame {
 
 /// Steps through the window's history with the mouse's side buttons, as a
 /// browser does: `Extra1` (Back) goes back, `Extra2` (Forward) forward.
-/// Ignored while a transient overlay owns the screen, where the keyboard is
-/// too: the image preview, an expanded video, a picker, a recording, or a
-/// message selection.
+/// Overlays are not places, and the buttons stay out of them while one is
+/// open, as the keyboard's own shortcuts do: the image preview, an expanded
+/// video, a dialog, the update screen, a picker, a reaction, a recording, a
+/// message selection, or a menu.
 fn history_buttons(app: &mut App, ctx: &egui::Context) {
     if app.image_preview.is_some()
         || app.video_expanded
+        || app.dialog.is_some()
+        || app.show_update
         || app.picker.is_some()
         || app.reaction_target.is_some()
         || app.recording.is_some()
         || app.selection.is_some()
+        || egui::Popup::is_any_open(ctx)
     {
         return;
     }
@@ -623,6 +627,10 @@ mod idle_tests {
         );
         // An expanded video owns the screen, as it does for the keyboard.
         app.video_expanded = true;
+        assert!(press(&mut app, egui::PointerButton::Extra1).is_empty());
+        app.video_expanded = false;
+        // A dialog is not a place, and the buttons stay out of it.
+        app.dialog = Some(crate::model::Dialog::NewChat);
         assert!(press(&mut app, egui::PointerButton::Extra1).is_empty());
     }
 
