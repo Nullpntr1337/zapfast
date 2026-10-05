@@ -1714,7 +1714,11 @@ impl App {
         self.leave_chat(id);
         self.chats.retain(|chat| chat.id != id);
         self.conversations.remove(id);
-        self.nav_history.forget(id);
+        // The recorded places belong to the account on screen, and chat ids
+        // repeat across accounts.
+        if !self.events_hidden {
+            self.nav_history.forget(id);
+        }
         self.drafts.remove(id);
         self.draft_mentions.remove(id);
         self.typing.remove(id);
@@ -2984,8 +2988,10 @@ impl App {
                 self.account_receipts_off = false;
                 self.open_chat = None;
                 // Every recorded place named a chat of the account that just
-                // went away.
-                self.nav_history.clear();
+                // went away, but only when that account is the one on screen.
+                if !self.events_hidden {
+                    self.nav_history.clear();
+                }
                 // Unsent text belongs to the account that was unlinked.
                 self.drafts.clear();
                 self.draft_mentions.clear();
@@ -6859,6 +6865,75 @@ mod tests {
         app.apply(Action::NavigateBack, &ctx);
         assert_eq!(app.open_chat, None);
         assert_eq!(app.page, Page::Chats);
+    }
+
+    /// Two accounts sharing `chat`: the first on screen, with `chat` opened
+    /// and Settings over it, and the second's event channel.
+    fn two_accounts_on_settings(
+        directory: &std::path::Path,
+        chat: &str,
+    ) -> (App, std::sync::mpsc::Sender<crate::backend::Event>) {
+        let ctx = egui::Context::default();
+        let dirs = AppDirs::under(directory);
+        let mut app = App::headless(dirs.clone(), Settings::default()).0;
+        let (second, events) = Account::detached(
+            &dirs,
+            AccountId::parse("2").unwrap(),
+            crate::settings::AccountSettings::default(),
+        )
+        .unwrap();
+        app.accounts.push(second);
+        app.active = 0;
+        app.chats.push(Chat::new(chat.into(), "Ada".into()));
+        app.accounts[1]
+            .chats
+            .push(Chat::new(chat.into(), "Ada".into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::OpenChat(chat.into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::Open(Page::Settings));
+        app.apply_actions(&ctx);
+        (app, events)
+    }
+
+    #[test]
+    fn a_hidden_accounts_chat_removal_leaves_the_history_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let chat = "15550007777@s.whatsapp.net";
+        let (mut app, events) = two_accounts_on_settings(directory.path(), chat);
+        let ctx = egui::Context::default();
+
+        events
+            .send(crate::backend::Event::ChatRemoved { chat: chat.into() })
+            .unwrap();
+        app.handle_events();
+
+        // The chat is gone from the hidden account only, and chat ids repeat
+        // across accounts, so the window's own place still names it.
+        app.apply(Action::NavigateBack, &ctx);
+        assert_eq!(app.page, Page::Chats);
+        assert_eq!(app.open_chat.as_deref(), Some(chat));
+    }
+
+    #[test]
+    fn a_hidden_accounts_logout_leaves_the_history_alone() {
+        let directory = tempfile::tempdir().unwrap();
+        let chat = "15550007777@s.whatsapp.net";
+        let (mut app, events) = two_accounts_on_settings(directory.path(), chat);
+        let ctx = egui::Context::default();
+
+        events
+            .send(crate::backend::Event::Link(LinkStatus::LoggedOut))
+            .unwrap();
+        app.handle_events();
+
+        app.apply(Action::NavigateBack, &ctx);
+        assert_eq!(
+            app.page,
+            Page::Chats,
+            "back still leaves the window's own Settings"
+        );
+        assert_eq!(app.open_chat.as_deref(), Some(chat));
     }
 
     #[test]
