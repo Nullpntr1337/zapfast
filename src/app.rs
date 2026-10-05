@@ -1714,6 +1714,7 @@ impl App {
         self.leave_chat(id);
         self.chats.retain(|chat| chat.id != id);
         self.conversations.remove(id);
+        self.nav_history.forget(id);
         self.drafts.remove(id);
         self.draft_mentions.remove(id);
         self.typing.remove(id);
@@ -2982,6 +2983,9 @@ impl App {
                 self.account_privacy = crate::privacy::Snapshot::default();
                 self.account_receipts_off = false;
                 self.open_chat = None;
+                // Every recorded place named a chat of the account that just
+                // went away.
+                self.nav_history.clear();
                 // Unsent text belongs to the account that was unlinked.
                 self.drafts.clear();
                 self.draft_mentions.clear();
@@ -3567,7 +3571,9 @@ impl App {
         // The chat first: opening one lands on the chat list, and the page
         // below puts the reader back on the page the place recorded.
         if self.open_chat != location.chat {
-            match location.chat {
+            // A chat can be gone while the history still names it, so it is
+            // never reopened as an empty pane or into `last_chat`.
+            match location.chat.filter(|id| self.chat(id).is_some()) {
                 Some(chat) => self.apply(Action::OpenChat(chat), ctx),
                 None => self.apply(Action::CloseChat, ctx),
             }
@@ -6807,6 +6813,52 @@ mod tests {
         assert_eq!(app.open_chat, None);
         assert_eq!(app.page, Page::Chats);
         assert_eq!(app.dialog, None, "the dialog is not restored");
+    }
+
+    #[test]
+    fn a_deleted_chat_is_not_reopened_from_the_history() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let chat = "15550007777@s.whatsapp.net";
+        app.chats.push(Chat::new(chat.into(), "Ada".into()));
+        app.apply_actions(&ctx);
+
+        app.actions.push(Action::OpenChat(chat.into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::Open(Page::Settings));
+        app.apply_actions(&ctx);
+
+        // The phone deletes the chat while the window is elsewhere.
+        app.forget_chat(chat);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat, None);
+
+        // The step skips the removed chat instead of reopening it.
+        app.apply(Action::NavigateBack, &ctx);
+        assert_eq!(app.page, Page::Chats);
+        assert_eq!(app.open_chat, None);
+    }
+
+    #[test]
+    fn a_gone_chat_is_never_reopened_from_a_stale_place() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let chat = "15550007777@s.whatsapp.net";
+        app.chats.push(Chat::new(chat.into(), "Ada".into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::OpenChat(chat.into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::Open(Page::Settings));
+        app.apply_actions(&ctx);
+
+        // Defence in depth: even when a path clears chats without pruning the
+        // history, a place naming a gone chat is not opened.
+        app.chats.clear();
+        app.open_chat = None;
+        app.apply(Action::NavigateBack, &ctx);
+        app.apply(Action::NavigateBack, &ctx);
+        assert_eq!(app.open_chat, None);
+        assert_eq!(app.page, Page::Chats);
     }
 
     #[test]

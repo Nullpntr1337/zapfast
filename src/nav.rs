@@ -53,6 +53,22 @@ impl History {
         self.future.clear();
     }
 
+    /// Forgets every place that had `chat` open, for a chat that is gone.
+    pub fn forget(&mut self, chat: &str) {
+        self.past
+            .retain(|location| location.chat.as_deref() != Some(chat));
+        self.future
+            .retain(|location| location.chat.as_deref() != Some(chat));
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|location| location.chat.as_deref() == Some(chat))
+        {
+            // The next recorded place takes its place without pushing.
+            self.current = None;
+        }
+    }
+
     /// Steps back, returning the place to show, or `None` at the oldest.
     pub fn back(&mut self) -> Option<Location> {
         let target = self.past.pop()?;
