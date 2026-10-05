@@ -3578,9 +3578,14 @@ impl App {
         // below puts the reader back on the page the place recorded.
         if self.open_chat != location.chat {
             // A chat can be gone while the history still names it, so it is
-            // never reopened as an empty pane or into `last_chat`.
-            match location.chat.filter(|id| self.chat(id).is_some()) {
-                Some(chat) => self.apply(Action::OpenChat(chat), ctx),
+            // never reopened as an empty pane or into `last_chat`. Forgetting
+            // the place keeps the forward history that replacing it would drop.
+            match location.chat {
+                Some(chat) if self.chat(&chat).is_some() => self.apply(Action::OpenChat(chat), ctx),
+                Some(gone) => {
+                    self.nav_history.forget(&gone);
+                    self.apply(Action::CloseChat, ctx);
+                }
                 None => self.apply(Action::CloseChat, ctx),
             }
         }
@@ -6934,6 +6939,40 @@ mod tests {
             "back still leaves the window's own Settings"
         );
         assert_eq!(app.open_chat.as_deref(), Some(chat));
+    }
+
+    #[test]
+    fn a_gone_chat_keeps_the_forward_history() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        let gone = "15550007771@s.whatsapp.net";
+        let kept = "15550007772@s.whatsapp.net";
+        app.chats.push(Chat::new(gone.into(), "Ada".into()));
+        app.chats.push(Chat::new(kept.into(), "Grace".into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::OpenChat(gone.into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::OpenChat(kept.into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::Open(Page::Settings));
+        app.apply_actions(&ctx);
+
+        // A path that drops a chat without pruning the history, which the
+        // guard in `show_location` exists for.
+        app.chats.retain(|chat| chat.id != gone);
+
+        app.actions.push(Action::NavigateBack);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat.as_deref(), Some(kept));
+        app.actions.push(Action::NavigateBack);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat, None, "the gone chat is not reopened");
+
+        // The step that skipped the gone chat must not drop where a forward
+        // step would go.
+        app.actions.push(Action::NavigateForward);
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat.as_deref(), Some(kept));
     }
 
     #[test]
