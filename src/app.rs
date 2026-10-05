@@ -3558,40 +3558,54 @@ impl App {
     /// Steps to the place visited before this one, as the mouse's back button
     /// does.
     fn navigate_back(&mut self, ctx: &egui::Context) {
-        if let Some(location) = self.nav_history.back() {
-            self.show_location(location, ctx);
+        // A place the window cannot show is forgotten by `show_location`, and
+        // the step moves on to the one before it, so one press never lands on
+        // a place that shows nothing. Each call takes a place off the stack,
+        // so this ends at the oldest.
+        while let Some(location) = self.nav_history.back() {
+            if self.show_location(location, ctx) {
+                break;
+            }
         }
     }
 
     /// Steps forward again after a back step, as the mouse's forward button
     /// does.
     fn navigate_forward(&mut self, ctx: &egui::Context) {
-        if let Some(location) = self.nav_history.forward() {
-            self.show_location(location, ctx);
+        while let Some(location) = self.nav_history.forward() {
+            if self.show_location(location, ctx) {
+                break;
+            }
         }
     }
 
     /// Restores a place through the same actions the interface uses, so a
-    /// draft is saved and a locked chat stays shut.
-    fn show_location(&mut self, location: Location, ctx: &egui::Context) {
+    /// draft is saved and a locked chat stays shut. Reports whether the window
+    /// could show it; a place naming a chat it cannot open is forgotten.
+    fn show_location(&mut self, location: Location, ctx: &egui::Context) -> bool {
+        let wanted = location.chat.clone();
         // The chat first: opening one lands on the chat list, and the page
         // below puts the reader back on the page the place recorded.
         if self.open_chat != location.chat {
-            // A chat can be gone while the history still names it, so it is
-            // never reopened as an empty pane or into `last_chat`. Forgetting
-            // the place keeps the forward history that replacing it would drop.
+            // A place whose chat is gone closes the current chat instead.
             match location.chat {
                 Some(chat) if self.chat(&chat).is_some() => self.apply(Action::OpenChat(chat), ctx),
-                Some(gone) => {
-                    self.nav_history.forget(&gone);
-                    self.apply(Action::CloseChat, ctx);
-                }
-                None => self.apply(Action::CloseChat, ctx),
+                _ => self.apply(Action::CloseChat, ctx),
             }
         }
         if self.page != location.page {
             self.apply(Action::Open(location.page), ctx);
         }
+        // A chat that is gone, or locked outside its folder, cannot be opened.
+        // Keeping its place would make every back step land on it again and
+        // replace the forward history.
+        if let Some(chat) = wanted
+            && self.open_chat.as_deref() != Some(chat.as_str())
+        {
+            self.nav_history.forget(&chat);
+            return false;
+        }
+        true
     }
 
     fn open_chat(&mut self, id: ChatId) {
@@ -6973,6 +6987,45 @@ mod tests {
         app.actions.push(Action::NavigateForward);
         app.apply_actions(&ctx);
         assert_eq!(app.open_chat.as_deref(), Some(kept));
+    }
+
+    #[test]
+    fn a_locked_chat_outside_its_folder_does_not_strand_the_history() {
+        let ctx = egui::Context::default();
+        let mut app = app();
+        app.settings.set_chat_lock_code(Some("123456"));
+        let locked = "15550007774@s.whatsapp.net";
+        let mut chat = Chat::new(locked.into(), "Ada".into());
+        chat.locked = true;
+        app.chats.push(chat);
+        app.apply_actions(&ctx);
+
+        // The reader opens the locked chat from the locked folder, then opens
+        // Settings over it.
+        app.apply(Action::UnlockLockedFolder("123456".into()), &ctx);
+        assert!(app.locked_folder_open());
+        app.actions.push(Action::OpenChat(locked.into()));
+        app.apply_actions(&ctx);
+        app.actions.push(Action::Open(Page::Settings));
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat.as_deref(), Some(locked));
+
+        // Hiding the window closes the folder and drops the code, so the chat
+        // can no longer be opened from the history.
+        app.window_gone();
+        app.apply_actions(&ctx);
+        assert_eq!(app.open_chat, None, "the locked chat is hidden again");
+
+        // Back must step past the place it cannot show in one press, and the
+        // way forward must survive the step.
+        app.actions.push(Action::NavigateBack);
+        app.apply_actions(&ctx);
+        assert_eq!(app.page, Page::Chats, "one press past the locked place");
+        assert_eq!(app.open_chat, None);
+
+        app.actions.push(Action::NavigateForward);
+        app.apply_actions(&ctx);
+        assert_eq!(app.page, Page::Settings, "forward still reaches Settings");
     }
 
     #[test]

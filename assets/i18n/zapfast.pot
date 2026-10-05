@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: ZapFast\n"
 "Report-Msgid-Bugs-To: https://github.com/crmne/zapfast/issues/new?"
 "template=translation.yml\n"
-"POT-Creation-Date: 2026-10-05 10:10+0200\n"
+"POT-Creation-Date: 2026-10-05 10:25+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1111,36 +1111,36 @@ msgid ""
 "Cancel the reply to send without a quote."
 msgstr ""
 
-#: src/app.rs:4902
+#: src/app.rs:4916
 msgid "Added to favorites"
 msgstr ""
 
-#: src/app.rs:4977
+#: src/app.rs:4991
 msgid "Sending the sticker pack…"
 msgstr ""
 
-#: src/app.rs:5270 src/ui/labels.rs:253
+#: src/app.rs:5284 src/ui/labels.rs:253
 #, rust-format
 msgid "You have {limit} labels, the most ZapFast keeps."
 msgstr ""
 
-#: src/app.rs:5957
+#: src/app.rs:5971
 msgid "App lock password saved"
 msgstr ""
 
-#: src/app.rs:5965
+#: src/app.rs:5979
 msgid "App lock turned off"
 msgstr ""
 
-#: src/app.rs:6078
+#: src/app.rs:6092
 msgid "This video opens in your system player"
 msgstr ""
 
-#: src/app.rs:6511
+#: src/app.rs:6525
 msgid "Copied image"
 msgstr ""
 
-#: src/app.rs:6514 src/app.rs:6519
+#: src/app.rs:6528 src/app.rs:6533
 msgid "Failed to copy image"
 msgstr ""
 
