@@ -412,6 +412,9 @@ pub enum Content {
     Image {
         caption: Option<String>,
         media: Media,
+        /// The short clip of a motion photo.
+        #[serde(default)]
+        motion: Option<Motion>,
     },
     Video {
         caption: Option<String>,
@@ -480,6 +483,12 @@ pub enum Content {
         /// message keeps its start time so updates do not reorder the chat.
         #[serde(default)]
         updated: i64,
+        /// Whether the sender's phone has posted positions this device cannot
+        /// read. WhatsApp keeps live locations off linked devices, so the
+        /// card holds the last position it was given and says where the
+        /// newer ones are.
+        #[serde(default)]
+        newer_on_phone: bool,
     },
     Contact {
         display_name: String,
@@ -834,6 +843,15 @@ impl Content {
             new.path = old.path.clone();
         }
         if let (
+            Self::Image { motion: new, .. },
+            Self::Image {
+                motion: Some(old), ..
+            },
+        ) = (&mut *self, old)
+        {
+            *new = Some(old.clone());
+        }
+        if let (
             Self::Interactive {
                 card: Some(new), ..
             },
@@ -913,6 +931,17 @@ impl Media {
     pub fn is_within_download_limit(&self) -> bool {
         self.size <= ATTACHMENT_DOWNLOAD_LIMIT
     }
+}
+
+/// A motion photo's clip. Its download keys stay in the archive.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Motion {
+    /// Decrypted downloaded file.
+    #[serde(default)]
+    pub path: Option<PathBuf>,
+    /// Non-persisted download state.
+    #[serde(skip)]
+    pub state: MediaState,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -1313,6 +1342,13 @@ pub enum Action {
         id: ChatId,
         name: String,
     },
+    /// Puts a template in the named chat's composer without sending it, the
+    /// way a share link's `text=` asks. Carries the chat it belongs to, since
+    /// a chat the app refuses to open must not put its text in another one.
+    PrefillComposer {
+        chat: ChatId,
+        text: String,
+    },
     /// Opens a chat at a message search result.
     OpenMessage {
         chat: ChatId,
@@ -1376,6 +1412,17 @@ pub enum Action {
     },
     Download {
         card: Option<usize>,
+        chat: ChatId,
+        message: String,
+    },
+    /// Downloads a motion photo's clip.
+    DownloadMotion {
+        chat: ChatId,
+        message: String,
+    },
+    /// Plays a motion photo's clip over its photo, downloading it first, or
+    /// goes back to the photo.
+    ToggleMotion {
         chat: ChatId,
         message: String,
     },
@@ -1817,6 +1864,7 @@ mod tests {
         );
         // A caption is searched too, and previewed the same way.
         let photo = super::Content::Image {
+            motion: None,
             caption: Some("a photo of a Zebra".into()),
             media: media(),
         };
@@ -2085,6 +2133,7 @@ mod tests {
         assert_eq!(Content::text("hi\nthere").summary(), "hi");
         assert_eq!(
             Content::Image {
+                motion: None,
                 caption: Some("look".into()),
                 media: media()
             }
@@ -2093,6 +2142,7 @@ mod tests {
         );
         assert_eq!(
             Content::Image {
+                motion: None,
                 caption: None,
                 media: media()
             }
@@ -2116,6 +2166,7 @@ mod tests {
         assert_eq!(Content::text("hi\nthere").full_summary(), "hi\nthere");
         assert_eq!(
             Content::Image {
+                motion: None,
                 caption: Some("look\nat this".into()),
                 media: media()
             }
@@ -2190,6 +2241,7 @@ mod tests {
             sequence: 7,
             ended: true,
             updated: 1_700_000_000,
+            newer_on_phone: true,
         };
         let json = serde_json::to_string(&content).expect("serializes");
         let back: Content = serde_json::from_str(&json).expect("parses");
@@ -2209,6 +2261,7 @@ mod tests {
                 sequence: 0,
                 ended: false,
                 updated: 0,
+                newer_on_phone: false,
             }
         );
     }
@@ -2224,6 +2277,7 @@ mod tests {
             sequence: 1,
             ended,
             updated: 0,
+            newer_on_phone: false,
         };
         assert!(!live(false).live_location_over(1_000, 1_000 + LIVE_LOCATION_LIMIT));
         assert!(live(false).live_location_over(1_000, 1_001 + LIVE_LOCATION_LIMIT));
